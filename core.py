@@ -84,12 +84,23 @@ class VideoGroup:
         return max(self.audio_streams, key=lambda s: s.size)
 
 
+def _bundled(name: str) -> str | None:
+    """If running as a PyInstaller --onefile bundle, look inside the extracted
+    temp dir (sys._MEIPASS) for a bundled binary."""
+    base = getattr(sys, "_MEIPASS", None)
+    if not base:
+        return None
+    exe_name = f"{name}.exe" if sys.platform == "win32" else name
+    candidate = Path(base) / exe_name
+    return str(candidate) if candidate.is_file() else None
+
+
 def find_ffmpeg() -> str | None:
-    return shutil.which("ffmpeg")
+    return _bundled("ffmpeg") or shutil.which("ffmpeg")
 
 
 def find_ffprobe() -> str | None:
-    return shutil.which("ffprobe")
+    return _bundled("ffprobe") or shutil.which("ffprobe")
 
 
 def probe_stream(ffprobe: str, path: Path) -> Stream:
