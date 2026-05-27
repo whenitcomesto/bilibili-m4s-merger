@@ -71,6 +71,8 @@ def run_pyinstaller(ffmpeg: Path, ffprobe: Path) -> None:
         "--name", APP_NAME,
         "--add-binary", f"{ffmpeg};.",
         "--add-binary", f"{ffprobe};.",
+        "--add-data", f"{ROOT / 'style.qss'};.",
+        "--add-data", f"{ROOT / 'assets'};assets",
         "--noconfirm",
         str(ROOT / "main.py"),
     ]

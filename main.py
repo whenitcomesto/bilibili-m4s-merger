@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -34,6 +35,25 @@ from core import (
     sanitize_filename,
     scan_folder,
 )
+
+
+def _resource_base() -> Path:
+    """Where to find bundled resources: PyInstaller _MEIPASS, else source dir."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return Path(base)
+    return Path(__file__).resolve().parent
+
+
+def load_stylesheet() -> str:
+    """Load style.qss, rewriting relative asset URLs to absolute paths."""
+    base = _resource_base()
+    qss_path = base / "style.qss"
+    if not qss_path.is_file():
+        return ""
+    qss = qss_path.read_text(encoding="utf-8")
+    assets_dir = (base / "assets").as_posix()
+    return qss.replace("url(assets/", f"url({assets_dir}/")
 
 
 @dataclass
@@ -90,6 +110,7 @@ class MuxWorker(QThread):
 class GroupWidget(QWidget):
     def __init__(self, group: VideoGroup, index: int) -> None:
         super().__init__()
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.group = group
         self.index = index
         self.enabled_checkbox = QCheckBox()
@@ -98,30 +119,58 @@ class GroupWidget(QWidget):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        self.setObjectName("groupCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 10)
+        layout.setContentsMargins(20, 16, 20, 18)
+        layout.setSpacing(10)
 
         header = QHBoxLayout()
+        header.setSpacing(12)
         title_label = QLabel(self.group.title)
-        title_font = title_label.font()
-        title_font.setBold(True)
-        title_font.setPointSize(title_font.pointSize() + 1)
-        title_label.setFont(title_font)
+        title_label.setObjectName(
+            "groupTitle" if self.group.is_complete else "groupTitleIncomplete"
+        )
         title_label.setWordWrap(True)
         header.addWidget(title_label, stretch=1)
 
+        pill = QLabel("✓ 就绪" if self.group.is_complete else "缺少配对流")
+        pill.setObjectName("pillReady" if self.group.is_complete else "pillMissing")
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(pill, alignment=Qt.AlignmentFlag.AlignVCenter)
+
         if self.group.is_complete:
-            self.enabled_checkbox.setText("待混流")
+            self.enabled_checkbox.setText("加入混流")
             self.enabled_checkbox.setChecked(True)
         else:
-            self.enabled_checkbox.setText("缺少配对流")
+            self.enabled_checkbox.setText("不可用")
             self.enabled_checkbox.setEnabled(False)
-            title_label.setStyleSheet("color: #b00020;")
-        header.addWidget(self.enabled_checkbox)
+        header.addWidget(self.enabled_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(header)
 
+        # Output filename (editable)
+        fn_label = QLabel("输出文件名")
+        fn_label.setObjectName("streamSectionLabel")
+        layout.addWidget(fn_label)
+
+        fn_row = QHBoxLayout()
+        fn_row.setSpacing(6)
+        self.filename_edit = QLineEdit()
+        self.filename_edit.setObjectName("filenameEdit")
+        default_name = sanitize_filename(self.group.title)
+        self.filename_edit.setText(default_name)
+        self.filename_edit.setPlaceholderText(default_name)
+        if not self.group.is_complete:
+            self.filename_edit.setEnabled(False)
+        fn_row.addWidget(self.filename_edit, stretch=1)
+        fn_suffix = QLabel(".mp4")
+        fn_suffix.setObjectName("filenameSuffix")
+        fn_row.addWidget(fn_suffix, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(fn_row)
+
         if self.group.video_streams:
-            layout.addWidget(QLabel("视频流："))
+            v_label = QLabel("视频流")
+            v_label.setObjectName("streamSectionLabel")
+            layout.addWidget(v_label)
             default = self.group.default_video()
             for s in self.group.video_streams:
                 radio = self._make_radio(s, default=s is default)
@@ -131,7 +180,9 @@ class GroupWidget(QWidget):
             layout.addWidget(self._warning("⚠ 未找到视频流"))
 
         if self.group.audio_streams:
-            layout.addWidget(QLabel("音频流："))
+            a_label = QLabel("音频流")
+            a_label.setObjectName("streamSectionLabel")
+            layout.addWidget(a_label)
             default = self.group.default_audio()
             for s in self.group.audio_streams:
                 radio = self._make_radio(s, default=s is default)
@@ -144,9 +195,9 @@ class GroupWidget(QWidget):
             layout.addWidget(self._warning("⚠ 无法识别类型的流（已忽略）："))
             for s in self.group.unknown_streams:
                 err = f" — {s.probe_error}" if s.probe_error else ""
-                layout.addWidget(QLabel(f"  · {s.path.name}{err}"))
-
-        self.setStyleSheet("GroupWidget { border: 1px solid #d0d0d0; border-radius: 6px; background: #fafafa; }")
+                lbl = QLabel(f"  · {s.path.name}{err}")
+                lbl.setStyleSheet("color: #92400E;")
+                layout.addWidget(lbl)
 
     def _make_radio(self, s: Stream, default: bool) -> QRadioButton:
         parts = [s.path.name, s.size_mb]
@@ -156,7 +207,7 @@ class GroupWidget(QWidget):
             parts.append(s.resolution)
         if s.bitrate_kbps != "-":
             parts.append(s.bitrate_kbps)
-        label = "   ".join(parts)
+        label = "   ·   ".join(parts)
         radio = QRadioButton(label)
         radio.setProperty("stream_path", str(s.path))
         if default:
@@ -165,7 +216,7 @@ class GroupWidget(QWidget):
 
     def _warning(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #b00020;")
+        lbl.setStyleSheet("color: #B91C1C; font-size: 12px;")
         return lbl
 
     def is_enabled(self) -> bool:
@@ -186,6 +237,10 @@ class GroupWidget(QWidget):
         if btn is None:
             return None
         return Path(btn.property("stream_path"))
+
+    def output_filename(self) -> str:
+        raw = self.filename_edit.text().strip() or self.group.title
+        return f"{sanitize_filename(raw)}.mp4"
 
 
 class MainWindow(QMainWindow):
@@ -208,26 +263,51 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
+        root.setContentsMargins(32, 28, 32, 24)
+        root.setSpacing(18)
+
+        # Header
+        title = QLabel("Bilibili m4s 混流工具")
+        title.setObjectName("appTitle")
+        subtitle = QLabel("识别文件夹中的 m4s 文件，按文件名分组后无损封装为 MP4")
+        subtitle.setObjectName("appSubtitle")
+        root.addWidget(title)
+        root.addWidget(subtitle)
+        root.addSpacing(4)
+
+        # Folder pickers section
+        folders_label = QLabel("文件夹")
+        folders_label.setObjectName("sectionLabel")
+        root.addWidget(folders_label)
 
         in_row = QHBoxLayout()
-        self.input_label = QLabel("输入文件夹：未选择")
+        in_row.setSpacing(12)
         btn_in = QPushButton("选择输入文件夹")
         btn_in.clicked.connect(self._choose_input)
+        self.input_label = QLabel("未选择")
+        self.input_label.setObjectName("pathLabel")
         in_row.addWidget(btn_in)
         in_row.addWidget(self.input_label, stretch=1)
         root.addLayout(in_row)
 
         out_row = QHBoxLayout()
-        self.output_label = QLabel("输出文件夹：未选择")
+        out_row.setSpacing(12)
         btn_out = QPushButton("选择输出文件夹")
         btn_out.clicked.connect(self._choose_output)
+        self.output_label = QLabel("未选择")
+        self.output_label.setObjectName("pathLabel")
         out_row.addWidget(btn_out)
         out_row.addWidget(self.output_label, stretch=1)
         root.addLayout(out_row)
 
+        root.addSpacing(6)
+
+        # Action row
         action_row = QHBoxLayout()
+        action_row.setSpacing(10)
         self.scan_btn = QPushButton("扫描并识别")
         self.scan_btn.clicked.connect(self._start_scan)
         action_row.addWidget(self.scan_btn)
@@ -246,33 +326,37 @@ class MainWindow(QMainWindow):
         action_row.addStretch(1)
 
         self.mux_btn = QPushButton("开始批量混流")
+        self.mux_btn.setObjectName("primary")
         self.mux_btn.clicked.connect(self._start_mux)
-        font = QFont(self.mux_btn.font())
-        font.setBold(True)
-        self.mux_btn.setFont(font)
         action_row.addWidget(self.mux_btn)
         root.addLayout(action_row)
 
+        # Groups list
         self.groups_container = QWidget()
+        self.groups_container.setObjectName("groupsContainer")
         self.groups_layout = QVBoxLayout(self.groups_container)
-        self.groups_layout.setSpacing(8)
+        self.groups_layout.setSpacing(12)
+        self.groups_layout.setContentsMargins(0, 0, 0, 0)
         self.groups_layout.addStretch(1)
 
         scroll = QScrollArea()
         scroll.setWidget(self.groups_container)
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         root.addWidget(scroll, stretch=2)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
+        self.progress.setTextVisible(False)
         root.addWidget(self.progress)
 
         self.status_label = QLabel("就绪")
+        self.status_label.setObjectName("statusBar")
         root.addWidget(self.status_label)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMaximumHeight(160)
+        self.log.setMaximumHeight(140)
         root.addWidget(self.log)
 
     def _check_dependencies(self) -> None:
@@ -371,6 +455,7 @@ class MainWindow(QMainWindow):
 
         jobs: list[MuxJob] = []
         skipped_existing: list[str] = []
+        used_names: dict[str, str] = {}  # filename -> first group title
         overwrite = self.overwrite_checkbox.isChecked()
 
         for w in self.group_widgets:
@@ -380,7 +465,19 @@ class MainWindow(QMainWindow):
             a = w.selected_audio()
             if not v or not a:
                 continue
-            out = self.output_folder / f"{sanitize_filename(w.group.title)}.mp4"
+            filename = w.output_filename()
+            if filename in used_names:
+                QMessageBox.warning(
+                    self,
+                    "文件名冲突",
+                    f"以下两个分组的输出文件名相同，请修改其中一个：\n\n"
+                    f"  · {used_names[filename]}\n"
+                    f"  · {w.group.title}\n\n"
+                    f"两者都想输出为：{filename}",
+                )
+                return
+            used_names[filename] = w.group.title
+            out = self.output_folder / filename
             if out.exists() and not overwrite:
                 skipped_existing.append(out.name)
                 continue
@@ -442,6 +539,9 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    qss = load_stylesheet()
+    if qss:
+        app.setStyleSheet(qss)
     window = MainWindow()
     window.show()
     return app.exec()
