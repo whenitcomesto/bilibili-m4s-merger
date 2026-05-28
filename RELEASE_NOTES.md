@@ -1,53 +1,44 @@
-# v0.1.1 — UI Redesign + Custom Filenames
+# v0.1.2 — Smarter Grouping + Manual Matching
 
 ## 中文
 
-### ✨ 本次更新
+### 🐛 修复
+- **IDM 首份文件正确识别**：之前 IDM 下载的"第一份"无 `_N` 后缀文件（如 `视频.m4s`，配合后续 `视频_2.m4s`、`视频_3.m4s`）会被误判为未匹配，现在能正确归入对应组
 
-- **全新 UI**：浅色卡片化设计，每个视频独立卡片展示
-- **自定义输出文件名**：每张卡片都有可编辑的文件名输入框，默认填自动识别的标题，你可以随意修改
-  - 自动检测重名冲突，弹窗提示
-  - 自动清理 Windows 不允许的特殊字符
-- **状态指示更清晰**：绿色 "✓ 就绪" / 红色 "缺少配对流" 标签一目了然
-- **更清晰的流信息展示**：每个 m4s 显示编码（h264/aac）、分辨率、码率、文件大小
-- 主操作按钮"开始批量混流"突出蓝色，次要按钮统一白底
-- 字体层级、留白、圆角全面优化
+### ✨ 新功能：未匹配文件手动归组
+- 自动归组失败的文件不再被忽略，而是显示在 **黄色"未匹配文件"卡片** 中
+- 每个未匹配文件可通过 **「加入组 ▾」** 下拉直接归入任意已有组
+- 勾选多个未匹配文件后点 **「用选中文件新建分组」** 创建全新分组
+- 已识别组内每个流旁边新增 **「移出」** 按钮，支持把误归的文件踢回未匹配区
+- 状态栏同步显示"已识别 X 个视频、Y 个就绪、Z 个待手动归组"
+
+### 🔧 内部
+- 改用两遍扫描算法（第 1 遍按 `_N` 建组、第 2 遍把无后缀文件按 stem 匹配进组）
+- UI 增加状态管理 + `refresh_display()`，所有归组/移出操作即时反映
 
 ### 📦 下载
-**`bilibili-m4s-merger.exe`** ← Windows 用户下载这个，双击即可运行。
+**`bilibili-m4s-merger.exe`** ← Windows 用户下载这个，双击运行。
 
 ### ⚠ 首次运行 Windows 安全警告
-未签名 .exe 会被 SmartScreen 拦截，弹出 "Windows protected your PC"：
-1. 点击 **"More info"**（更多信息）
-2. 点击 **"Run anyway"**（仍要运行）
-
-### 📝 使用步骤
-1. 双击 .exe 启动
-2. 选择含有 m4s 文件的输入文件夹
-3. 选择 MP4 输出文件夹
-4. 点「扫描并识别」
-5. 每张卡片可改输出文件名、选不同清晰度的视频/音频流
-6. 点「开始批量混流」
+SmartScreen 会弹 "Windows protected your PC"：点 **"More info" → "Run anyway"**。
 
 ---
 
 ## English
 
-### ✨ What's New
+### 🐛 Fixes
+- **Recognize IDM "first copy" files**: previously, files without a `_N` suffix (e.g. `video.m4s` alongside `video_2.m4s`, `video_3.m4s`) were misclassified as unmatched. They now correctly join their sibling group.
 
-- **Redesigned UI**: light theme with card-based layout for each video
-- **Custom output filenames**: every card has an editable filename field, pre-filled with the auto-detected title
-  - Duplicate-name conflict detection with warning dialog
-  - Auto-sanitizes invalid Windows characters
-- **Clearer status indicators**: green "✓ Ready" / red "Missing stream" pills
-- **Richer stream info**: each m4s shows codec (h264/aac), resolution, bitrate, file size
-- Primary mux button is now prominent blue; secondary buttons unified white
-- Improved typography hierarchy, spacing, and rounded corners throughout
+### ✨ New: Manual Grouping for Unmatched Files
+- Files that can't be auto-grouped now appear in a **yellow "Unmatched files" card** instead of being ignored
+- Each unmatched file has an **"Add to group ▾"** dropdown to merge it into any existing group
+- Select multiple unmatched files and click **"Create new group from selection"** to make a fresh group
+- Group cards now show a **"Remove"** button next to each stream, letting you eject mistakes back to the unmatched pile
+- Status bar shows live count: "X videos identified, Y ready, Z files pending manual grouping"
+
+### 🔧 Internal
+- Two-pass scan algorithm (pass 1 builds groups from `_N`-suffixed files; pass 2 matches no-suffix files by stem)
+- UI now has explicit state + `refresh_display()` for instant updates after any grouping action
 
 ### 📦 Download
 **`bilibili-m4s-merger.exe`** — Windows users, double-click to run.
-
-### ⚠ First-Run SmartScreen Warning
-Because the .exe is unsigned, Windows will show "Windows protected your PC":
-1. Click **"More info"**
-2. Click **"Run anyway"**

@@ -13,9 +13,11 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -108,11 +110,12 @@ class MuxWorker(QThread):
 
 
 class GroupWidget(QWidget):
-    def __init__(self, group: VideoGroup, index: int) -> None:
+    def __init__(self, group: VideoGroup, index: int, on_remove_stream=None) -> None:
         super().__init__()
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.group = group
         self.index = index
+        self.on_remove_stream = on_remove_stream  # callable(stream, group)
         self.enabled_checkbox = QCheckBox()
         self.video_buttons = QButtonGroup(self)
         self.audio_buttons = QButtonGroup(self)
@@ -173,9 +176,8 @@ class GroupWidget(QWidget):
             layout.addWidget(v_label)
             default = self.group.default_video()
             for s in self.group.video_streams:
-                radio = self._make_radio(s, default=s is default)
-                self.video_buttons.addButton(radio)
-                layout.addWidget(radio)
+                row = self._make_stream_row(s, default=s is default, button_group=self.video_buttons)
+                layout.addWidget(row)
         else:
             layout.addWidget(self._warning("⚠ 未找到视频流"))
 
@@ -185,9 +187,8 @@ class GroupWidget(QWidget):
             layout.addWidget(a_label)
             default = self.group.default_audio()
             for s in self.group.audio_streams:
-                radio = self._make_radio(s, default=s is default)
-                self.audio_buttons.addButton(radio)
-                layout.addWidget(radio)
+                row = self._make_stream_row(s, default=s is default, button_group=self.audio_buttons)
+                layout.addWidget(row)
         else:
             layout.addWidget(self._warning("⚠ 未找到音频流"))
 
@@ -199,7 +200,7 @@ class GroupWidget(QWidget):
                 lbl.setStyleSheet("color: #92400E;")
                 layout.addWidget(lbl)
 
-    def _make_radio(self, s: Stream, default: bool) -> QRadioButton:
+    def _make_stream_row(self, s: Stream, default: bool, button_group: QButtonGroup) -> QWidget:
         parts = [s.path.name, s.size_mb]
         if s.codec_name:
             parts.append(s.codec_name)
@@ -212,7 +213,24 @@ class GroupWidget(QWidget):
         radio.setProperty("stream_path", str(s.path))
         if default:
             radio.setChecked(True)
-        return radio
+        button_group.addButton(radio)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(8)
+        row_layout.addWidget(radio, stretch=1)
+
+        remove_btn = QPushButton("移出")
+        remove_btn.setObjectName("smallActionBtn")
+        remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        remove_btn.clicked.connect(lambda _, s=s: self._handle_remove(s))
+        row_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        return row
+
+    def _handle_remove(self, stream: Stream) -> None:
+        if self.on_remove_stream:
+            self.on_remove_stream(stream, self.group)
 
     def _warning(self, text: str) -> QLabel:
         lbl = QLabel(text)
@@ -243,6 +261,127 @@ class GroupWidget(QWidget):
         return f"{sanitize_filename(raw)}.mp4"
 
 
+class UnmatchedSection(QWidget):
+    """Card listing unmatched m4s files with manual grouping controls."""
+
+    def __init__(
+        self,
+        streams: list[Stream],
+        group_titles: list[str],
+        on_add_to_group,        # callable(stream, group_title)
+        on_create_new_group,    # callable(streams, new_title)
+    ) -> None:
+        super().__init__()
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("unmatchedCard")
+        self.streams = streams
+        self.group_titles = group_titles
+        self.on_add_to_group = on_add_to_group
+        self.on_create_new_group = on_create_new_group
+        self.checkboxes: list[tuple[QCheckBox, Stream]] = []
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 18)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setSpacing(12)
+        title = QLabel(f"未匹配文件 ({len(self.streams)})")
+        title.setObjectName("groupTitle")
+        header.addWidget(title, stretch=1)
+        pill = QLabel("待手动归组")
+        pill.setObjectName("pillWarning")
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(pill, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(header)
+
+        desc = QLabel("以下文件不符合 标题_数字.m4s 命名规则。可单个加入现有组，或勾选多个后新建组。")
+        desc.setObjectName("unmatchedDesc")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        for s in self.streams:
+            row = QWidget()
+            r = QHBoxLayout(row)
+            r.setContentsMargins(0, 0, 0, 0)
+            r.setSpacing(10)
+
+            cb = QCheckBox()
+            self.checkboxes.append((cb, s))
+            r.addWidget(cb)
+
+            info_parts = [s.path.name, s.size_mb]
+            kind = "视频" if s.is_video else "音频" if s.is_audio else "未知"
+            info_parts.append(kind)
+            if s.codec_name:
+                info_parts.append(s.codec_name)
+            if s.is_video and s.resolution != "-":
+                info_parts.append(s.resolution)
+            if s.bitrate_kbps != "-":
+                info_parts.append(s.bitrate_kbps)
+            info_label = QLabel("   ·   ".join(info_parts))
+            info_label.setObjectName("unmatchedInfo")
+            r.addWidget(info_label, stretch=1)
+
+            add_btn = QPushButton("加入组 ▾")
+            add_btn.setObjectName("smallActionBtn")
+            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if self.group_titles:
+                menu = QMenu(add_btn)
+                for t in self.group_titles:
+                    act = menu.addAction(t)
+                    act.triggered.connect(
+                        lambda checked=False, stream=s, title=t: self.on_add_to_group(stream, title)
+                    )
+                add_btn.setMenu(menu)
+            else:
+                add_btn.setEnabled(False)
+                add_btn.setToolTip("当前没有可加入的组——先用「新建分组」创建一个")
+            r.addWidget(add_btn)
+
+            layout.addWidget(row)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
+        select_all = QPushButton("全选")
+        select_all.clicked.connect(lambda: self._set_all_checked(True))
+        actions.addWidget(select_all)
+        select_none = QPushButton("全不选")
+        select_none.clicked.connect(lambda: self._set_all_checked(False))
+        actions.addWidget(select_none)
+        actions.addStretch(1)
+        new_group = QPushButton("用选中文件新建分组")
+        new_group.clicked.connect(self._handle_new_group)
+        actions.addWidget(new_group)
+        layout.addLayout(actions)
+
+    def _set_all_checked(self, value: bool) -> None:
+        for cb, _ in self.checkboxes:
+            cb.setChecked(value)
+
+    def _handle_new_group(self) -> None:
+        selected = [s for cb, s in self.checkboxes if cb.isChecked()]
+        if not selected:
+            QMessageBox.information(self, "提示", "请先勾选要归入新组的文件。")
+            return
+        default_name = sanitize_filename(selected[0].path.stem) or "新分组"
+        name, ok = QInputDialog.getText(
+            self,
+            "新建分组",
+            "请输入分组名（同时作为默认输出文件名）：",
+            text=default_name,
+        )
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            QMessageBox.warning(self, "提示", "分组名不能为空。")
+            return
+        self.on_create_new_group(selected, name)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -251,7 +390,10 @@ class MainWindow(QMainWindow):
 
         self.input_folder: Path | None = None
         self.output_folder: Path | None = None
+        self.video_groups: list[VideoGroup] = []
+        self.unmatched_streams: list[Stream] = []
         self.group_widgets: list[GroupWidget] = []
+        self.unmatched_widget: UnmatchedSection | None = None
         self.scan_worker: ScanWorker | None = None
         self.mux_worker: MuxWorker | None = None
 
@@ -391,6 +533,75 @@ class MainWindow(QMainWindow):
             w.setParent(None)
             w.deleteLater()
         self.group_widgets.clear()
+        if self.unmatched_widget is not None:
+            self.unmatched_widget.setParent(None)
+            self.unmatched_widget.deleteLater()
+            self.unmatched_widget = None
+
+    def refresh_display(self) -> None:
+        """Rebuild groups + unmatched widgets from current self.video_groups / unmatched_streams state."""
+        self._clear_groups()
+        insert_at = self.groups_layout.count() - 1  # before the stretch
+
+        # Unmatched section first (if any), so user sees it at the top
+        if self.unmatched_streams:
+            self.unmatched_widget = UnmatchedSection(
+                streams=self.unmatched_streams,
+                group_titles=[g.title for g in self.video_groups],
+                on_add_to_group=self.move_to_group,
+                on_create_new_group=self.move_to_new_group,
+            )
+            self.groups_layout.insertWidget(insert_at, self.unmatched_widget)
+            insert_at += 1
+
+        for i, g in enumerate(self.video_groups):
+            widget = GroupWidget(g, i, on_remove_stream=self.remove_from_group)
+            self.groups_layout.insertWidget(insert_at, widget)
+            insert_at += 1
+            self.group_widgets.append(widget)
+
+        total = len(self.video_groups)
+        ready = sum(1 for g in self.video_groups if g.is_complete)
+        parts = [f"识别到 {total} 个视频"]
+        if total:
+            parts.append(f"{ready} 个就绪")
+        if self.unmatched_streams:
+            parts.append(f"{len(self.unmatched_streams)} 个文件待手动归组")
+        self.status_label.setText("，".join(parts) if total or self.unmatched_streams else "未找到 m4s 文件")
+
+    def move_to_group(self, stream: Stream, target_title: str) -> None:
+        target = next((g for g in self.video_groups if g.title == target_title), None)
+        if target is None or stream not in self.unmatched_streams:
+            return
+        self.unmatched_streams.remove(stream)
+        target.streams.append(stream)
+        self._log(f"→ {stream.path.name} 加入组「{target_title}」")
+        self.refresh_display()
+
+    def move_to_new_group(self, streams: list[Stream], title: str) -> None:
+        if any(g.title == title for g in self.video_groups):
+            QMessageBox.warning(self, "提示", f"已存在同名组「{title}」，请换一个名字。")
+            return
+        for s in streams:
+            if s in self.unmatched_streams:
+                self.unmatched_streams.remove(s)
+        new_group = VideoGroup(title=title, streams=list(streams))
+        self.video_groups.append(new_group)
+        self._log(f"→ 新建组「{title}」，含 {len(streams)} 个流")
+        self.refresh_display()
+
+    def remove_from_group(self, stream: Stream, source_group: VideoGroup) -> None:
+        if stream not in source_group.streams:
+            return
+        source_group.streams.remove(stream)
+        self.unmatched_streams.append(stream)
+        if not source_group.streams:
+            if source_group in self.video_groups:
+                self.video_groups.remove(source_group)
+            self._log(f"← {stream.path.name} 移出组「{source_group.title}」（组已删除，无剩余流）")
+        else:
+            self._log(f"← {stream.path.name} 移出组「{source_group.title}」")
+        self.refresh_display()
 
     def _start_scan(self) -> None:
         if not self.input_folder:
@@ -416,27 +627,20 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "扫描失败", error)
             return
 
+        self.video_groups = list(groups)
+        self.unmatched_streams = list(unmatched)
+
         if not groups and not unmatched:
             self.status_label.setText("未找到 m4s 文件")
             self._log("未找到 m4s 文件。")
             return
 
-        insert_at = self.groups_layout.count() - 1
-        for i, g in enumerate(groups):
-            widget = GroupWidget(g, i)
-            self.groups_layout.insertWidget(insert_at, widget)
-            insert_at += 1
-            self.group_widgets.append(widget)
-
-        self.status_label.setText(
-            f"识别到 {len(groups)} 个视频"
-            + (f"，{len(unmatched)} 个文件未匹配命名规则" if unmatched else "")
+        total_streams = sum(len(g.streams) for g in groups) + len(unmatched)
+        self._log(
+            f"分组完成：{len(groups)} 组、{total_streams} 个 m4s 流；"
+            f"其中 {len(unmatched)} 个文件待手动归组。"
         )
-        self._log(f"分组完成：{len(groups)} 组，{sum(len(g.streams) for g in groups)} 个 m4s 流。")
-        if unmatched:
-            self._log(f"未匹配 _<数字> 命名规则的文件：{len(unmatched)}")
-            for s in unmatched:
-                self._log(f"  · {s.path.name}")
+        self.refresh_display()
 
     def _set_all(self, value: bool) -> None:
         for w in self.group_widgets:

@@ -165,23 +165,39 @@ def probe_stream(ffprobe: str, path: Path) -> Stream:
 def scan_folder(folder: Path, ffprobe: str) -> tuple[list[VideoGroup], list[Stream]]:
     """Scan folder for .m4s files, probe each, group by filename prefix.
 
-    Returns (groups, unmatched). Unmatched contains files that don't fit the
-    `title_<num>.m4s` pattern.
-    """
-    groups: dict[str, VideoGroup] = {}
-    unmatched: list[Stream] = []
+    Two-pass algorithm:
+      1. Files matching `(.+)_(\\d+)\\.m4s` define group titles and join them.
+      2. Files without a `_<num>` suffix are added to a group if their stem
+         matches a known title from pass 1; otherwise they go to unmatched.
 
+    This handles the common IDM pattern where the first downloaded copy keeps
+    the original name (`title.m4s`) and duplicates get `_2`, `_3`, ... suffixes.
+
+    Returns (groups, unmatched).
+    """
     files = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".m4s")
-    for path in files:
-        stem = path.stem
-        match = GROUP_PATTERN.match(stem)
-        stream = probe_stream(ffprobe, path)
-        if not match:
+    streams: list[tuple[Path, Stream]] = [(p, probe_stream(ffprobe, p)) for p in files]
+
+    groups: dict[str, VideoGroup] = {}
+
+    # Pass 1: files with _N suffix establish group titles
+    leftovers: list[Stream] = []
+    for path, stream in streams:
+        match = GROUP_PATTERN.match(path.stem)
+        if match:
+            title = match.group(1)
+            groups.setdefault(title, VideoGroup(title=title)).streams.append(stream)
+        else:
+            leftovers.append(stream)
+
+    # Pass 2: files without _N suffix — join existing group if stem matches its title
+    unmatched: list[Stream] = []
+    for stream in leftovers:
+        title = stream.path.stem
+        if title in groups:
+            groups[title].streams.append(stream)
+        else:
             unmatched.append(stream)
-            continue
-        title = match.group(1)
-        group = groups.setdefault(title, VideoGroup(title=title))
-        group.streams.append(stream)
 
     return list(groups.values()), unmatched
 

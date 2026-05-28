@@ -39,32 +39,28 @@ def main() -> int:
     window.output_folder = Path("D:/videos")
     window.output_label.setText("D:\\videos")
 
-    groups = [
-        VideoGroup(title="漫长的季节 EP01 凶手不止一个", streams=[
-            mk("漫长的季节EP01_1.m4s", 856.4, "video", "h264", 1920, 1080, 6234000),
-            mk("漫长的季节EP01_2.m4s", 45.2, "audio", "aac", br=320000),
+    window.video_groups = [
+        VideoGroup(title="该被世界记得._哔哩哔哩_bilibili", streams=[
+            mk("该被世界记得._哔哩哔哩_bilibili.m4s", 12.8, "video", "h264", 640, 360, 800000),
+            mk("该被世界记得._哔哩哔哩_bilibili_2.m4s", 69.6, "video", "h264", 1920, 1080, 4500000),
+            mk("该被世界记得._哔哩哔哩_bilibili_3.m4s", 124.6, "audio", "aac", br=320000),
         ]),
-        VideoGroup(title="三体动画版 第8集 古筝行动", streams=[
-            mk("三体动画版_1.m4s", 287.1, "video", "h264", 1280, 720, 2100000),
-            mk("三体动画版_3.m4s", 587.6, "video", "h264", 1920, 1080, 4500000),
-            mk("三体动画版_2.m4s", 38.5, "audio", "aac", br=192000),
-        ]),
-        VideoGroup(title="纪录片片段A（缺少音频）", streams=[
-            mk("纪录片片段A_1.m4s", 124.3, "video", "h264", 1280, 720, 1800000),
+        VideoGroup(title="下_哔哩哔哩_bilibili", streams=[
+            mk("下_哔哩哔哩_bilibili.m4s", 12.6, "video", "h264", 640, 360, 800000),
+            mk("下_哔哩哔哩_bilibili_2.m4s", 107.7, "video", "h264", 1920, 1080, 6234000),
+            mk("下_哔哩哔哩_bilibili_3.m4s", 204.5, "audio", "aac", br=320000),
         ]),
     ]
+    window.unmatched_streams = [
+        mk("random_clip.m4s", 87.3, "video", "h264", 1280, 720, 2400000),
+        mk("test_audio.m4s", 24.1, "audio", "aac", br=192000),
+        mk("untitled_segment.m4s", 156.8, "video", "h264", 1920, 1080, 3800000),
+    ]
 
-    insert_at = window.groups_layout.count() - 1
-    for i, g in enumerate(groups):
-        widget = GroupWidget(g, i)
-        window.groups_layout.insertWidget(insert_at, widget)
-        insert_at += 1
-        window.group_widgets.append(widget)
-
-    window.status_label.setText("识别到 3 个视频，其中 2 个就绪可混流")
+    window.refresh_display()
     window.log.append("✓ ffmpeg / ffprobe 已就绪（内置）")
     window.log.append("扫描 D:\\downloads\\bilibili")
-    window.log.append("分组完成：3 组，6 个 m4s 流。")
+    window.log.append("分组完成：2 组、9 个 m4s 流；其中 3 个文件待手动归组。")
 
     def capture() -> None:
         # Expand scroll area so all cards are visible (no scrollbar)

@@ -257,6 +257,76 @@ GroupWidget {
     border-radius: 12px;
 }
 
+/* ===== Unmatched files "card" ===== */
+UnmatchedSection {
+    background-color: #FFFBEB;
+    border: 1px solid #FCD34D;
+    border-radius: 12px;
+}
+
+QLabel#unmatchedDesc {
+    color: #92400E;
+    font-size: 12px;
+    padding-bottom: 4px;
+}
+
+QLabel#unmatchedInfo {
+    color: #374151;
+    font-size: 12px;
+}
+
+/* Small "移出" / "加入组 ▾" button (in stream rows) */
+QPushButton#smallActionBtn {
+    background-color: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #6B7280;
+    min-height: 14px;
+}
+
+QPushButton#smallActionBtn:hover {
+    background-color: #F3F4F6;
+    border-color: #D1D5DB;
+    color: #111827;
+}
+
+QPushButton#smallActionBtn:pressed {
+    background-color: #E5E7EB;
+}
+
+QPushButton#smallActionBtn:disabled {
+    color: #D1D5DB;
+    background-color: #F9FAFB;
+    border-color: #F3F4F6;
+}
+
+QPushButton#smallActionBtn::menu-indicator {
+    image: none;
+    width: 0;
+}
+
+/* Dropdown menu styling */
+QMenu {
+    background-color: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 8px 14px;
+    border-radius: 4px;
+    color: #111827;
+    font-size: 12px;
+}
+
+QMenu::item:selected {
+    background-color: #EFF6FF;
+    color: #1D4ED8;
+}
+
 QLabel#groupTitle {
     font-size: 14px;
     font-weight: 600;
